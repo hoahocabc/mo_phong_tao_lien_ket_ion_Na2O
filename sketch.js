@@ -1,62 +1,59 @@
 // Mô phỏng liên kết ion Na2O 3D - Phiên bản đã sửa lỗi và cập nhật
 // Tác giả: GPT-5
 
-let fontRegular; // Biến toàn cục để chứa phông chữ đã tải
-let playButton, resetButton, instructionsButton, sphereLayerButton, labelButton; // Thêm biến cho nút nhãn
+let fontRegular;
+let playButton, resetButton, instructionsButton, sphereLayerButton, labelButton, rotateElectronsButton;
 let titleDiv, footerDiv, instructionsPopup;
 let atoms = [];
-let state = "idle"; // idle, animating, transferring, final_bonding_and_rearranging, done
-let progress = 0; // Biến tiến trình chung cho các pha
-let transferProgress = 0; // Biến tiến trình cho việc chuyển electron
-let finalProgress = 0; // Biến tiến trình cho giai đoạn cuối: liên kết và sắp xếp lại
-let transferringElectrons = []; // Mảng chứa hai electron đang được chuyển
-let showSphereLayer = false; // Biến mới để điều khiển việc hiển thị lớp cầu
-let showLabels = true; // Biến mới để điều khiển việc hiển thị nhãn
+let state = "idle";
+let progress = 0;
+let transferProgress = 0;
+let finalProgress = 0;
+let transferringElectrons = [];
+let showSphereLayer = false;
+let showLabels = true;
+let rotateElectrons = true;
+let flickerAlpha = 0;
+let cylinderAlpha = 0;
+let cylinderCreated = false;
 
-// Tham số cho khoảng cách chuyển động
-const naOuterRadius = 50 + 2 * 40; // Bán kính lớp vỏ thứ 3 của Na
-const oOuterRadius = 50 + 1 * 40; // Bán kính lớp vỏ thứ 2 của O
-const initialShellGap = 100; // Khoảng cách ban đầu giữa các lớp vỏ
-const transferShellGap = 20; // Khoảng cách giữa các lớp vỏ khi bắt đầu chuyển electron
-const finalShellGap = 10; // Khoảng cách cuối cùng giữa các lớp vỏ (đã thay đổi)
+// Tham số cho khoảng cách chuyển động (giảm tỉ lệ 50%)
+const scaleFactor = 0.5;
+const baseRadius = 50 * scaleFactor;
+const radiusIncrement = 40 * scaleFactor;
+const naOuterRadius = baseRadius + 2 * radiusIncrement;
+const oOuterRadius = baseRadius + 1 * radiusIncrement;
+const initialShellGap = 100 * scaleFactor;
+const transferShellGap = 20 * scaleFactor;
+const finalShellGap = 10 * scaleFactor;
 
-// Thay đổi theo yêu cầu của bạn: Tính toán khoảng cách ban đầu giữa các hạt nhân để lớp vỏ ngoài cách nhau 100px
 const initialDistance = naOuterRadius + initialShellGap + oOuterRadius;
 
 const transferTriggerDistance = naOuterRadius + transferShellGap + oOuterRadius;
 const finalDistance = naOuterRadius + finalShellGap + oOuterRadius;
-const outermostShellRadiusO = 50 + 1 * 40; // Bán kính lớp vỏ thứ 2 của O
+const outermostShellRadiusO = baseRadius + 1 * radiusIncrement;
 
-// Bán kính mới của lớp cầu sau khi hình thành ion
-// Na+ chỉ còn 2 lớp, bán kính giảm
-const naIonRadius = 50 + 1 * 40;
-// O2- nhận thêm e, bán kính tăng
-const oIonRadius = 50 + 2 * 40;
+const naIonRadius = baseRadius + 1 * radiusIncrement;
+const oIonRadius = baseRadius + 1 * radiusIncrement;
 
-// Các điểm điều khiển đường cong Bezier cho việc chuyển electron
 let startPos1, endPos1, controlPoint1_1, controlPoint2_1;
 let startPos2, endPos2, controlPoint1_2, controlPoint2_2;
 
-// Biến cho việc xoay và di chuyển canvas
 let panX = 0;
 let panY = 0;
 
 function preload() {
-    // Tải phông chữ để tránh lỗi trong chế độ WEBGL
     fontRegular = loadFont('https://fonts.gstatic.com/s/opensans/v27/mem8YaGs126MiZpBA-UFVZ0e.ttf');
 }
 
 function setup() {
     createCanvas(windowWidth, windowHeight, WEBGL);
-    // Cập nhật giá trị 'far' của perspective để giảm hiệu ứng "dẹt"
     perspective(PI / 3, width / height, 0.1, 4000);
-
     smooth();
     textFont(fontRegular);
     textAlign(CENTER, CENTER);
     noStroke();
 
-    // Tạo UI HTML cố định
     titleDiv = createDiv("MÔ PHỎNG LIÊN KẾT ION GIỮA Na và O");
     titleDiv.style("position", "absolute");
     titleDiv.style("top", "10px");
@@ -77,7 +74,7 @@ function setup() {
     footerDiv.style("text-shadow", "2px 2px 5px rgba(0,0,0,0.7)");
     footerDiv.style("font-family", "Arial");
 
-    createUI(); // Tạo UI trước để các nút tồn tại
+    createUI();
     resetSimulation();
 }
 
@@ -91,7 +88,6 @@ function easeOutCubic(t) {
 }
 
 function createUI() {
-    // Tạo nút Play
     playButton = createButton("▶ Play");
     styleButton(playButton);
     setupButtonEffects(playButton, () => {
@@ -100,7 +96,17 @@ function createUI() {
         }
     });
 
-    // Tạo nút Bật/Tắt lớp cầu
+    rotateElectronsButton = createButton("Tắt quay electron");
+    styleButton(rotateElectronsButton);
+    setupButtonEffects(rotateElectronsButton, () => {
+        rotateElectrons = !rotateElectrons;
+        if (rotateElectrons) {
+            rotateElectronsButton.html("Tắt quay electron");
+        } else {
+            rotateElectronsButton.html("Bật quay electron");
+        }
+    });
+
     sphereLayerButton = createButton("Bật lớp cầu");
     styleButton(sphereLayerButton);
     setupButtonEffects(sphereLayerButton, () => {
@@ -112,7 +118,6 @@ function createUI() {
         }
     });
 
-    // Tạo nút Bật/Tắt nhãn
     labelButton = createButton("Tắt nhãn");
     styleButton(labelButton);
     setupButtonEffects(labelButton, () => {
@@ -124,19 +129,16 @@ function createUI() {
         }
     });
 
-    // Tạo nút Reset
     resetButton = createButton("↺ Reset");
     styleButton(resetButton);
     setupButtonEffects(resetButton, resetSimulation);
 
-    // Tạo nút Hướng dẫn
     instructionsButton = createButton("Hướng dẫn");
     styleButton(instructionsButton, true);
     instructionsButton.mousePressed(() => {
         instructionsPopup.style('display', 'block');
     });
 
-    // Tạo popup hướng dẫn
     instructionsPopup = createDiv();
     instructionsPopup.id('instructions-popup');
     instructionsPopup.style('position', 'fixed');
@@ -150,7 +152,7 @@ function createUI() {
     instructionsPopup.style('font-family', 'Arial');
     instructionsPopup.style('z-index', '1000');
     instructionsPopup.style('box-shadow', '0 4px 8px rgba(0, 0, 0, 0.2)');
-    instructionsPopup.style('display', 'none'); // Ẩn mặc định
+    instructionsPopup.style('display', 'none');
 
     let popupContent = `
         <h2 style="font-size: 24px; margin-bottom: 15px; text-align: center;">Hướng dẫn sử dụng</h2>
@@ -173,7 +175,7 @@ function createUI() {
 }
 
 function styleButton(btn, isTransparent = false) {
-    btn.style("width", "120px"); // Tăng chiều rộng để vừa văn bản dài hơn
+    btn.style("width", "120px");
     btn.style("height", "30px");
     btn.style("padding", "0px");
     btn.style("font-size", "12px");
@@ -194,7 +196,6 @@ function styleButton(btn, isTransparent = false) {
     }
 }
 
-// Hàm mới để xử lý các hiệu ứng của nút
 function setupButtonEffects(btn, pressAction) {
     btn.mousePressed(() => {
         btn.style("box-shadow", "inset 2px 2px 4px rgba(0,0,0,0.6)");
@@ -215,26 +216,24 @@ function setupButtonEffects(btn, pressAction) {
 
 function positionButtons() {
     playButton.position(20, 20);
-    sphereLayerButton.position(20, 60); // Đặt vị trí cho nút mới
-    labelButton.position(20, 100); // Đặt vị trí cho nút nhãn
-    resetButton.position(20, 140);
-    instructionsButton.position(20, 180);
+    rotateElectronsButton.position(20, 60);
+    sphereLayerButton.position(20, 100);
+    labelButton.position(20, 140);
+    resetButton.position(20, 180);
+    instructionsButton.position(20, 220);
 }
 
-// Hàm mới để đặt lại camera
 function resetCamera() {
-    // Đặt lại các biến camera về trạng thái mặc định
-    // (Đây là cách khắc phục triệt để nhất cho orbitControl)
-    perspective(PI / 3, width / height, 0.1, 4000);
     panX = 0;
     panY = 0;
+
+    let cameraZ = (height / 2.0) / tan(PI * 30.0 / 180.0);
+    camera(0, 0, cameraZ, 0, 0, 0, 0, 1, 0);
 }
 
 function resetSimulation() {
-    // Gọi hàm resetCamera() để đặt lại góc nhìn
     resetCamera();
 
-    // Reset các biến trạng thái
     atoms = [];
     state = "idle";
     progress = 0;
@@ -243,22 +242,26 @@ function resetSimulation() {
     transferringElectrons = [];
     showSphereLayer = false;
     showLabels = true;
+    rotateElectrons = true;
+    flickerAlpha = 0;
+    cylinderAlpha = 0;
+    cylinderCreated = false;
 
-    // Khởi tạo lại các nguyên tử như lúc ban đầu
     atoms.push(new Atom(-initialDistance, 0, "Na", 11, [2, 8, 1], color(0, 200, 255)));
     atoms.push(new Atom(0, 0, "O", 8, [2, 6], color(0, 255, 0)));
     atoms.push(new Atom(initialDistance, 0, "Na", 11, [2, 8, 1], color(0, 200, 255)));
 
-    // Cập nhật văn bản của nút về trạng thái mặc định
     if (sphereLayerButton) {
         sphereLayerButton.html("Bật lớp cầu");
     }
     if (labelButton) {
         labelButton.html("Tắt nhãn");
     }
+    if (rotateElectronsButton) {
+        rotateElectronsButton.html("Tắt quay electron");
+    }
 }
 
-// Hàm mới để vẽ văn bản luôn hướng về phía camera
 function drawBillboardText(textStr, x, y, z, size) {
     push();
     translate(x, y, z);
@@ -270,7 +273,6 @@ function drawBillboardText(textStr, x, y, z, size) {
 function draw() {
     background(0);
 
-    // Chức năng di chuyển toàn khối khi nhấn Ctrl
     if (keyIsDown(17) && mouseIsPressed) {
         panX += (mouseX - pmouseX);
         panY += (mouseY - pmouseY);
@@ -283,7 +285,6 @@ function draw() {
     ambientLight(80);
     pointLight(255, 255, 255, 0, 0, 300);
 
-    // Logic mô phỏng mới
     if (state === "animating") {
         progress += 0.01;
         let t_move = easeInOutQuad(progress);
@@ -294,29 +295,23 @@ function draw() {
             state = "transferring";
             transferProgress = 0;
 
-            // Lấy electron ngoài cùng của mỗi nguyên tử Na
             transferringElectrons = [
                 atoms[0].shells[2][0],
                 atoms[2].shells[2][0]
             ];
 
-            // Xóa các electron khỏi lớp vỏ Na để chúng không còn quay nữa
-            atoms[0].shells.pop(); // Xóa lớp vỏ ngoài cùng của Na
-            atoms[2].shells.pop(); // Xóa lớp vỏ ngoài cùng của Na
+            atoms[0].shells.pop();
+            atoms[2].shells.pop();
 
-            // Thiết lập đường chuyển cho electron 1 (từ Na1 sang O)
             startPos1 = createVector(atoms[0].pos.x + atoms[0].shellRadii[2], atoms[0].pos.y);
             endPos1 = createVector(atoms[1].pos.x - outermostShellRadiusO, atoms[1].pos.y);
-            // Điều chỉnh các điểm điều khiển để đường cong thẳng hơn (ít cong hơn)
-            controlPoint1_1 = createVector(p5.Vector.lerp(startPos1, endPos1, 0.3).x, startPos1.y - 30, 0);
-            controlPoint2_1 = createVector(p5.Vector.lerp(startPos1, endPos1, 0.7).x, endPos1.y - 30, 0);
+            controlPoint1_1 = createVector(p5.Vector.lerp(startPos1, endPos1, 0.3).x, startPos1.y - 30 * scaleFactor, 0);
+            controlPoint2_1 = createVector(p5.Vector.lerp(startPos1, endPos1, 0.7).x, endPos1.y - 30 * scaleFactor, 0);
 
-            // Thiết lập đường chuyển cho electron 2 (từ Na2 sang O)
             startPos2 = createVector(atoms[2].pos.x - atoms[2].shellRadii[2], atoms[2].pos.y);
             endPos2 = createVector(atoms[1].pos.x + outermostShellRadiusO, atoms[1].pos.y);
-            // Điều chỉnh các điểm điều khiển để đường cong thẳng hơn (ít cong hơn)
-            controlPoint1_2 = createVector(p5.Vector.lerp(startPos2, endPos2, 0.3).x, startPos2.y + 30, 0);
-            controlPoint2_2 = createVector(p5.Vector.lerp(startPos2, endPos2, 0.7).x, endPos2.y + 30, 0);
+            controlPoint1_2 = createVector(p5.Vector.lerp(startPos2, endPos2, 0.3).x, startPos2.y + 30 * scaleFactor, 0);
+            controlPoint2_2 = createVector(p5.Vector.lerp(startPos2, endPos2, 0.7).x, endPos2.y + 30 * scaleFactor, 0);
         }
 
         atoms[0].pos.x = -currentDist;
@@ -327,55 +322,48 @@ function draw() {
         if (transferProgress > 1) {
             transferProgress = 1;
 
-            // Thêm electron từ mảng transferringElectrons vào lớp vỏ O
             atoms[1].shells[1].push(transferringElectrons[0]);
             atoms[1].shells[1].push(transferringElectrons[1]);
 
-            // Chuẩn bị cho việc sắp xếp lại ngay lập tức
             prepareRearrangementO(atoms[1].shells[1]);
 
-            // Chuyển sang giai đoạn cuối, kết hợp di chuyển và sắp xếp
             state = "final_bonding_and_rearranging";
             finalProgress = 0;
-            transferringElectrons = []; // Xóa mảng để không vẽ nữa
+            transferringElectrons = [];
         }
 
-        // Chỉ vẽ electron đang chuyển nếu mảng không rỗng
         if (transferringElectrons.length > 0) {
             let t_transfer = easeOutCubic(transferProgress);
 
-            // Electron 1
             let mid1 = createVector(
                 bezierPoint(startPos1.x, controlPoint1_1.x, controlPoint2_1.x, endPos1.x, t_transfer),
                 bezierPoint(startPos1.y, controlPoint1_1.y, controlPoint2_1.y, endPos1.y, t_transfer),
                 bezierPoint(startPos1.z, controlPoint1_1.z, controlPoint2_1.z, endPos1.z, t_transfer)
             );
 
-            // Electron 2
             let mid2 = createVector(
-                bezierPoint(startPos2.x, controlPoint1_2.x, controlPoint2_2.x, endPos2.x, t_transfer),
+                bezierPoint(startPos2.x, controlPoint1_2.y, controlPoint2_2.x, endPos2.x, t_transfer),
                 bezierPoint(startPos2.y, controlPoint1_2.y, controlPoint2_2.y, endPos2.y, t_transfer),
                 bezierPoint(startPos2.z, controlPoint1_2.z, controlPoint2_2.z, endPos2.z, t_transfer)
             );
 
-            // Hiệu ứng vệt sáng và vẽ cả hai electron
             drawingContext.shadowBlur = lerp(0, 10, t_transfer);
             drawingContext.shadowColor = transferringElectrons[0].col;
 
             push();
             translate(mid1.x, mid1.y, 0);
             fill(transferringElectrons[0].col);
-            sphere(6);
-            fill(255, 255, 0); // Nhãn màu vàng
-            drawBillboardText("-", 0, -15, 0, 18);
+            sphere(6 * scaleFactor);
+            fill(255, 255, 0);
+            drawBillboardText("-", 0, -15 * scaleFactor, 0, 18 * scaleFactor);
             pop();
 
             push();
             translate(mid2.x, mid2.y, 0);
             fill(transferringElectrons[1].col);
-            sphere(6);
-            fill(255, 255, 0); // Nhãn màu vàng
-            drawBillboardText("-", 0, -15, 0, 18);
+            sphere(6 * scaleFactor);
+            fill(255, 255, 0);
+            drawBillboardText("-", 0, -15 * scaleFactor, 0, 18 * scaleFactor);
             pop();
 
             drawingContext.shadowBlur = 0;
@@ -387,7 +375,6 @@ function draw() {
             state = "done";
         }
 
-        // Di chuyển các nguyên tử và sắp xếp lại electron cùng lúc
         let t_movement = easeInOutQuad(finalProgress);
         let currentDist = lerp(transferTriggerDistance, finalDistance, t_movement);
 
@@ -395,7 +382,6 @@ function draw() {
         atoms[1].pos.x = 0;
         atoms[2].pos.x = currentDist;
 
-        // Sắp xếp lại lớp vỏ của O
         let shell = atoms[1].shells[1];
         for (let i = 0; i < shell.length; i++) {
             let e = shell[i];
@@ -404,27 +390,25 @@ function draw() {
         }
     }
 
-    // Cập nhật tốc độ quay của tất cả các electron trong mọi trạng thái
-    for (let atom of atoms) {
-        for (let shell of atom.shells) {
-            for (let e of shell) {
-                let dynamicSpeed = 0.036; // Tốc độ quay mới
-                e.angle += dynamicSpeed;
+    if (rotateElectrons) {
+        for (let atom of atoms) {
+            for (let shell of atom.shells) {
+                for (let e of shell) {
+                    let dynamicSpeed = 0.036;
+                    e.angle += dynamicSpeed;
+                }
             }
         }
     }
 
-    // Logic hiển thị mới: Tắt/bật lớp cầu
     if (showSphereLayer) {
         for (let atom of atoms) {
             push();
             translate(atom.pos.x, atom.pos.y, 0);
-            // Lấy bán kính lớp vỏ ngoài cùng hiện tại của nguyên tử/ion
             let currentOutermostRadius = atom.shellRadii[atom.shells.length - 1];
-            // Cập nhật bán kính dựa trên trạng thái (Na+ nhỏ hơn, O2- lớn hơn)
-            if (atom.label === "Na" && state === "done") {
+            if (atom.label === "Na" && (state === "done" || state === "final_bonding_and_rearranging")) {
                 currentOutermostRadius = naIonRadius;
-            } else if (atom.label === "O" && state === "done") {
+            } else if (atom.label === "O" && (state === "done" || state === "final_bonding_and_rearranging")) {
                 currentOutermostRadius = oIonRadius;
             }
             atom.showSphere(currentOutermostRadius);
@@ -439,41 +423,78 @@ function draw() {
         }
     }
 
-    // Vẽ nhãn nguyên tử/ion
+    if (state === "done" && showSphereLayer) {
+        if (!cylinderCreated) {
+            cylinderAlpha = 0;
+            cylinderCreated = true;
+        }
+
+        cylinderAlpha = min(cylinderAlpha + 0.02, 1);
+        
+        // Điều chỉnh giá trị alpha tối đa để làm ống mờ hơn
+        let maxFlickerAlpha = 50; 
+        flickerAlpha = (sin(frameCount * 1.5) * 0.5 + 0.5 + random(-0.2, 0.2)) * maxFlickerAlpha * cylinderAlpha;
+        flickerAlpha = constrain(flickerAlpha, 0, 255);
+
+        let naPos = atoms[0].pos;
+        let oPos = atoms[1].pos;
+        let na2Pos = atoms[2].pos;
+
+        let p1 = p5.Vector.lerp(naPos, oPos, 0.5);
+        let dist1 = naPos.dist(oPos);
+        let angle1 = atan2(oPos.y - naPos.y, oPos.x - naPos.x);
+
+        push();
+        translate(p1.x, p1.y, p1.z);
+        rotateZ(angle1 + HALF_PI);
+        fill(255, flickerAlpha);
+        cylinder(30 * scaleFactor, dist1);
+        pop();
+
+        let p2 = p5.Vector.lerp(na2Pos, oPos, 0.5);
+        let dist2 = na2Pos.dist(oPos);
+        let angle2 = atan2(oPos.y - na2Pos.y, oPos.x - na2Pos.x);
+
+        push();
+        translate(p2.x, p2.y, p2.z);
+        rotateZ(angle2 + HALF_PI);
+        fill(255, flickerAlpha);
+        cylinder(30 * scaleFactor, dist2);
+        pop();
+    } else {
+        cylinderCreated = false;
+    }
+
+
     if (showLabels) {
         for (let atom of atoms) {
             push();
-            fill(255); // Màu trắng cho nhãn nguyên tử
+            fill(255);
             let lastRadius = atom.shellRadii[atom.shells.length - 1];
-            drawBillboardText(atom.label, atom.pos.x, atom.pos.y + lastRadius + 20, 0, 25);
+            drawBillboardText(atom.label, atom.pos.x, atom.pos.y + lastRadius + 20 * scaleFactor, 0, 25 * scaleFactor);
             pop();
         }
     }
 
-    // Vẽ nhãn điện tích hạt nhân
     for (let atom of atoms) {
         push();
-        fill(255, 255, 0); // Nhãn màu vàng
-        drawBillboardText(`+${atom.protons}`, atom.pos.x, atom.pos.y - 30, 0, 18);
+        fill(255, 255, 0);
+        drawBillboardText(`+${atom.protons}`, atom.pos.x, atom.pos.y - 30 * scaleFactor, 0, 18 * scaleFactor);
         pop();
     }
 
-    // Vẽ nhãn ion
     if (state === "done" || state === "final_bonding_and_rearranging") {
-        // Na1 bên trái
         let lastRadiusNa = atoms[0].shellRadii[1];
-        fill(255, 255, 0); // Nhãn màu vàng
-        drawBillboardText("+", atoms[0].pos.x, atoms[0].pos.y - (lastRadiusNa + 30), 0, 25);
+        fill(255, 255, 0);
+        drawBillboardText("+", atoms[0].pos.x, atoms[0].pos.y - (lastRadiusNa + 30 * scaleFactor), 0, 25 * scaleFactor);
 
-        // O ở giữa
-        let lastRadiusO = atoms[1].shellRadii[1];
-        fill(255, 255, 0); // Nhãn màu vàng
-        drawBillboardText("2-", atoms[1].pos.x, atoms[1].pos.y - (lastRadiusO + 30), 0, 25);
+        let lastRadiusO = atoms[1].shells.length > 1 ? atoms[1].shellRadii[1] : 0;
+        fill(255, 255, 0);
+        drawBillboardText("2-", atoms[1].pos.x, atoms[1].pos.y - (lastRadiusO + 30 * scaleFactor), 0, 25 * scaleFactor);
 
-        // Na2 bên phải
         lastRadiusNa = atoms[2].shellRadii[1];
-        fill(255, 255, 0); // Nhãn màu vàng
-        drawBillboardText("+", atoms[2].pos.x, atoms[2].pos.y - (lastRadiusNa + 30), 0, 25);
+        fill(255, 255, 0);
+        drawBillboardText("+", atoms[2].pos.x, atoms[2].pos.y - (lastRadiusNa + 30 * scaleFactor), 0, 25 * scaleFactor);
     }
 }
 
@@ -505,11 +526,9 @@ class Atom {
         this.protons = protons;
         this.shells = [];
         this.shellRadii = [];
-        this.electronCol = electronCol; // Lưu màu electron
-        let baseR = 50;
-        let increment = 40;
+        this.electronCol = electronCol;
         for (let i = 0; i < shellCounts.length; i++) {
-            let radius = baseR + i * increment;
+            let radius = baseRadius + i * radiusIncrement;
             this.shellRadii.push(radius);
             let shellElectrons = [];
             for (let j = 0; j < shellCounts[i]; j++) {
@@ -526,8 +545,8 @@ class Atom {
 
     show() {
         push();
-        fill(255, 0, 0); // Hạt nhân màu đỏ
-        sphere(20);
+        fill(255, 0, 0);
+        sphere(20 * scaleFactor);
         pop();
 
         for (let i = 0; i < this.shells.length; i++) {
@@ -545,27 +564,24 @@ class Atom {
                     push();
                     translate(ex, ey, 0);
                     fill(e.col);
-                    sphere(6);
+                    sphere(6 * scaleFactor);
                     pop();
 
-                    fill(255, 255, 0); // Nhãn màu vàng
-                    drawBillboardText("-", ex, ey - 15, 0, 18);
+                    fill(255, 255, 0);
+                    drawBillboardText("-", ex, ey - 15 * scaleFactor, 0, 18 * scaleFactor);
                 }
             }
         }
     }
 
-    // Hàm mới để vẽ lớp cầu, nhận bán kính mới
     showSphere(radius) {
-        // Vẽ hạt nhân
         push();
-        fill(255, 0, 0); // Hạt nhân màu đỏ
-        sphere(20);
+        fill(255, 0, 0);
+        sphere(20 * scaleFactor);
         pop();
 
-        // Vẽ lớp cầu trơn
         noStroke();
-        fill(this.electronCol, 100); // Màu electron với độ trong suốt 100
+        fill(this.electronCol, 100);
         sphere(radius);
     }
 }
@@ -574,4 +590,5 @@ function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
     perspective(PI / 3, windowWidth / windowHeight, 0.1, 4000);
     positionButtons();
+    resetCamera();
 }
