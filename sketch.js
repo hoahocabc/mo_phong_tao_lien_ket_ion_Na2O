@@ -1,6 +1,3 @@
-// Mô phỏng liên kết ion Na2O 3D - Phiên bản đã sửa lỗi và cập nhật
-// Tác giả: GPT-5
-
 let fontRegular;
 let playButton, resetButton, instructionsButton, sphereLayerButton, labelButton, rotateElectronsButton;
 let titleDiv, footerDiv, instructionsPopup;
@@ -431,8 +428,9 @@ function draw() {
 
         cylinderAlpha = min(cylinderAlpha + 0.02, 1);
         
-        // Điều chỉnh giá trị alpha tối đa để làm ống mờ hơn
-        let maxFlickerAlpha = 50; 
+        // Điều chỉnh giá trị alpha tối đa để làm ống ít trong suốt hơn (giảm độ trong suốt một chút)
+        // Trước đây maxFlickerAlpha = 50; bây giờ tăng lên để ống bớt trong suốt (hơi mờ)
+        let maxFlickerAlpha = 140; 
         flickerAlpha = (sin(frameCount * 1.5) * 0.5 + 0.5 + random(-0.2, 0.2)) * maxFlickerAlpha * cylinderAlpha;
         flickerAlpha = constrain(flickerAlpha, 0, 255);
 
