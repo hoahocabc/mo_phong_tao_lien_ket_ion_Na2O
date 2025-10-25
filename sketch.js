@@ -39,6 +39,15 @@ let startPos2, endPos2, controlPoint1_2, controlPoint2_2;
 let panX = 0;
 let panY = 0;
 
+// --- Constants learned from file 1, applied here ---
+// Nucleus radius for offsetting 3D labels toward the viewer
+const NUCLEUS_RADIUS = 20 * scaleFactor;
+// Label offset and small rotation/offset for improved 3D placement
+const LABEL_OFFSET_EXTRA = 1.0 * scaleFactor;
+const LABEL_ROTATION_MAG = 0.05;
+const ORBIT_RADIUS = 5 * scaleFactor;
+// ----------------------------------------------------
+
 function preload() {
     fontRegular = loadFont('https://fonts.gstatic.com/s/opensans/v27/mem8YaGs126MiZpBA-UFVZ0e.ttf');
 }
@@ -279,8 +288,23 @@ function draw() {
 
     translate(panX, panY);
 
-    ambientLight(80);
-    pointLight(255, 255, 255, 0, 0, 300);
+    // Use only ambient + two moving directional lights (no fixed point lights)
+    if (showSphereLayer) {
+        ambientLight(120); // increased a bit for brighter sphere-layer rendering
+    } else {
+        ambientLight(200); // increased overall ambient when not using sphere layer
+    }
+
+    // Two moving directional lights (dynamic highlights) — no fixed lights
+    let a1 = frameCount * 0.010;
+    let l1x = cos(a1) * 400;
+    let l1y = sin(a1) * 240;
+    directionalLight(190, 190, 190, l1x, l1y, -0.3); // made a bit brighter
+
+    let a2 = frameCount * 0.018 + PI / 3;
+    let l2x = cos(a2) * 220;
+    let l2y = sin(a2) * 160;
+    directionalLight(150, 150, 150, -l2x, -l2y, 0.2); // made a bit brighter
 
     if (state === "animating") {
         progress += 0.01;
@@ -398,7 +422,9 @@ function draw() {
         }
     }
 
+    // Render atoms (either with sphere layer or as particles)
     if (showSphereLayer) {
+        // Sphere mode: use material-based spheres so directional lights show highlights
         for (let atom of atoms) {
             push();
             translate(atom.pos.x, atom.pos.y, 0);
@@ -412,6 +438,7 @@ function draw() {
             pop();
         }
     } else {
+        // Particles/shells mode (original)
         for (let atom of atoms) {
             push();
             translate(atom.pos.x, atom.pos.y, 0);
@@ -420,6 +447,7 @@ function draw() {
         }
     }
 
+    // Connecting cylinders when done + sphere layer enabled
     if (state === "done" && showSphereLayer) {
         if (!cylinderCreated) {
             cylinderAlpha = 0;
@@ -428,8 +456,6 @@ function draw() {
 
         cylinderAlpha = min(cylinderAlpha + 0.02, 1);
         
-        // Điều chỉnh giá trị alpha tối đa để làm ống ít trong suốt hơn (giảm độ trong suốt một chút)
-        // Trước đây maxFlickerAlpha = 50; bây giờ tăng lên để ống bớt trong suốt (hơi mờ)
         let maxFlickerAlpha = 140; 
         flickerAlpha = (sin(frameCount * 1.5) * 0.5 + 0.5 + random(-0.2, 0.2)) * maxFlickerAlpha * cylinderAlpha;
         flickerAlpha = constrain(flickerAlpha, 0, 255);
@@ -463,7 +489,7 @@ function draw() {
         cylinderCreated = false;
     }
 
-
+    // Billboard labels for element symbols
     if (showLabels) {
         for (let atom of atoms) {
             push();
@@ -474,13 +500,49 @@ function draw() {
         }
     }
 
-    for (let atom of atoms) {
-        push();
-        fill(255, 255, 0);
-        drawBillboardText(`+${atom.protons}`, atom.pos.x, atom.pos.y - 30 * scaleFactor, 0, 18 * scaleFactor);
-        pop();
+    // NOTE: Removed the small yellow "+{protons}" billboard labels to avoid duplicates.
+    // The 3D nucleus charge labels below (+11, +8, +11) are now the only nucleus-number labels.
+
+    // 3D nucleus charge labels (+11 and +8) positioned as learned from File 1.
+    // Ensure both Na atoms have "+11" and the O atom has "+8".
+    if (showLabels) {
+        let offset = ORBIT_RADIUS;
+
+        // Left Na (atoms[0]) - translate slightly toward viewer and toward center (right)
+        if (atoms[0]) {
+            push();
+            translate(atoms[0].pos.x + offset, atoms[0].pos.y, NUCLEUS_RADIUS + LABEL_OFFSET_EXTRA);
+            rotateY(LABEL_ROTATION_MAG);
+            fill(255);
+            textSize(18 * scaleFactor);
+            text("+11", 0, 0);
+            pop();
+        }
+
+        // Middle O (atoms[1]) - translate slightly toward viewer and slightly left for readability
+        if (atoms[1]) {
+            push();
+            translate(atoms[1].pos.x - offset, atoms[1].pos.y, NUCLEUS_RADIUS + LABEL_OFFSET_EXTRA);
+            rotateY(-LABEL_ROTATION_MAG);
+            fill(255);
+            textSize(18 * scaleFactor);
+            text("+8", 0, 0);
+            pop();
+        }
+
+        // Right Na (atoms[2]) - translate slightly toward viewer and toward center (left)
+        if (atoms[2]) {
+            push();
+            translate(atoms[2].pos.x - offset, atoms[2].pos.y, NUCLEUS_RADIUS + LABEL_OFFSET_EXTRA);
+            rotateY(-LABEL_ROTATION_MAG);
+            fill(255);
+            textSize(18 * scaleFactor);
+            text("+11", 0, 0);
+            pop();
+        }
     }
 
+    // Final large charge signs when bonding/rearranged (unchanged)
     if (state === "done" || state === "final_bonding_and_rearranging") {
         let lastRadiusNa = atoms[0].shellRadii[1];
         fill(255, 255, 0);
@@ -572,15 +634,29 @@ class Atom {
         }
     }
 
+    // showSphere uses materials so highlights are dynamic but base color preserved
     showSphere(radius) {
         push();
+        // draw nucleus
         fill(255, 0, 0);
         sphere(20 * scaleFactor);
         pop();
 
+        // Apply material-based rendering so lights affect sphere while preserving base color
+        push();
         noStroke();
-        fill(this.electronCol, 100);
-        sphere(radius);
+
+        const r = red(this.electronCol);
+        const g = green(this.electronCol);
+        const b = blue(this.electronCol);
+
+        shininess(85);
+        ambientMaterial(r, g, b);
+        specularMaterial(min(255, r + 45), min(255, g + 45), min(255, b + 45));
+
+        // Use higher detail for smoother shading
+        sphere(radius, 64, 64);
+        pop();
     }
 }
 
